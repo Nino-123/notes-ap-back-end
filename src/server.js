@@ -2,6 +2,7 @@ const Hapi = require('@hapi/hapi');
 const notes = require('./api/notes');
 const NotesService = require('./services/inMemory/NotesService');
 const NotesValidator = require('./validator/notes');
+const ClientError = require('./exceptions/ClientError');
 
 
 const init = async () => {
@@ -24,27 +25,22 @@ const init = async () => {
     },
   });
 
-  // Normalize Boom / Hapi error responses so tests receive consistent shape
-  // (e.g. payload parse errors return a Boom 400 before reaching handlers)
   server.ext('onPreResponse', (request, h) => {
-    const response = request.response;
+    // mendapatkan konteks response dari request
+    const { response } = request;
 
-    // If Hapi generated an error (Boom), convert it to our API error shape
-    if (response && response.isBoom) {
-      const statusCode = response.output && response.output.statusCode ? response.output.statusCode : 500;
-      const message = response.message || (response.output && response.output.payload && response.output.payload.message) || 'Terjadi kegagalan pada server.';
-
-      if (statusCode >= 400 && statusCode < 500) {
-        return h.response({ status: 'fail', message }).code(statusCode);
-      }
-
-      return h.response({ status: 'error', message: 'Maaf, terjadi kegagalan pada server kami.' }).code(500);
+    // penanganan client error secara internal.
+    if (response instanceof ClientError) {
+      const newResponse = h.response({
+        status: 'fail',
+        message: response.message,
+      });
+      newResponse.code(response.statusCode);
+      return newResponse;
     }
 
     return h.continue;
   });
-
-  console.log('Routes:', server.table().map((r) => `${r.method.toUpperCase()} ${r.path}`));
 
   await server.start();
   console.log(`Server berjalan pada ${server.info.uri}`);
